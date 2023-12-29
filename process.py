@@ -9,12 +9,16 @@ import re
 import time
 import requests
 import tqdm
-from bs4 import BeautifulSoup
+import yaml
 
-import config
+from lxml import etree
+
 from utils import MessagePush
 
-if config.log_report:
+with open('config.yml', 'r', encoding='utf-8') as f:
+    config = yaml.load(f.read(), Loader=yaml.FullLoader)
+
+if config['log_report']:
     log_file_Name = f"职教家园-{datetime.datetime.now().strftime('%Y-%m-%d %H')}.log"
     if not os.path.exists("log"):
         os.mkdir("log")
@@ -40,73 +44,56 @@ def get_proxy():
     page = 1
     while True:
         try:
-            url = f"https://www.kuaidaili.com/free/inha/{page}/"
-            html = requests.get(url, headers=headers, timeout=3).text
-            page = page + 1
+            url = f"http://www.zdaye.com/free/{page}/"
+            response = requests.get(url=url, headers=headers)
         except Exception as e:
             return None
-        soup = BeautifulSoup(html, features="lxml")
-        tr_tags = soup.find_all("tr")
-        proxy_list = []
-        for tr in tr_tags:
-            ip_tag = tr.find('td', {'data-title': 'IP'})
-            port_tag = tr.find('td', {'data-title': 'PORT'})
-            if ip_tag and port_tag:
-                ip = ip_tag.text
-                port = port_tag.text
-                proxy_list.append(ip + ":" + port)
-        for i in proxy_list:
-            if check_proxy_alive(i):
-                return i
+        tree = etree.HTML(response.text)
+        data = tree.xpath('//*[@id="ipc"]/tbody/tr')
+        if not data:
+            return False
+        for i in data:
+            ip = i.xpath("./td[1]/text()")[0]
+            port = i.xpath("./td[2]/text()")[0]
+            proxy = ip + ":" + port
+            if check_proxy_alive(proxy):
+                return proxy
             else:
                 continue
+        page = page + 1
 
 
 def check_proxy_alive(proxy):
     try:
-        response = requests.get('http://www.baidu.com/',
-                                proxies={'http': 'http://' + proxy, 'https': 'https://' + proxy}, timeout=5)
+        response = requests.get('http://token.ip.api.useragentinfo.com/json?token=ab28a017dc0b7536f452fd951aed51d2',
+                                proxies={'http': 'http://' + proxy}, timeout=5)
         if response.status_code == 200:
-            return True
+            data = response.json()
+            return True, proxy, data
         else:
             return False
     except Exception as e:
         return False
 
 
-if config.proxy_enable:
+if config['proxy_enable']:
     print("代理已开启，正在获取代理地址。。。")
     proxy_data = get_proxy()
-    logging.info(proxy_data)
-    print(f"本次运行使用代理 \033[31m{proxy_data}\033[0m")
+    if proxy_data:
+        logging.info(proxy_data)
+        print(f"本次运行使用代理 \033[31m{proxy_data}\033[0m")
+    else:
+        proxy_data = None
+        print("\033[31m无法从代理网站获取数据！\033[0m")
 else:
     proxy_data = None
 
 
 def random_Time(time):
+    time = time.split("-")
     data = random.randint(int(time[0]), int(time[1]))
     logging.info(data)
     return data
-
-
-def get_Apitoken():
-    url = "http://sxbaapp.zcj.jyt.henan.gov.cn/api/getApitoken.ashx"
-    headers = {
-        'content-type': 'application/json;charset=UTF-8',
-    }
-    response = requests.post(url, headers=headers)
-    try:
-        result = response.json()
-        if result["code"] == 1001:
-            token = result["data"]["apitoken"]
-            logging.info(token)
-            return token
-        else:
-            logging.info("get_Apitoken获取token失败")
-            return ""
-    except Exception as e:
-        logging.info(e)
-        return ""
 
 
 def load_users_from_json(file_path):
@@ -169,18 +156,42 @@ def generate_headers(sign, phonetype, token, timestamp):
     return data
 
 
-def send_request(url, method, headers, data, proxy=None):
+def get_Apitoken():
+    url = "http://sxbaapp.zcj.jyt.henan.gov.cn/api/getApitoken.ashx"
+    headers = {
+        'content-type': 'application/json;charset=UTF-8',
+        'User-Agent': 'Internship/1.3.8 (iPhone; iOS 16.6; Scale/3.00)'
+    }
+    response = requests.post(url, headers=headers)
+    try:
+        result = response.json()
+        if result["code"] == 1001:
+            token = result["data"]["apitoken"]
+            logging.info(token)
+            return token
+        else:
+            logging.info("get_Apitoken获取token失败")
+            return ""
+    except Exception as e:
+        logging.info(e)
+        return ""
+
+
+def send_request(url, method, headers, data, proxy=None, content=None):
     global proxy_data
     if proxy is not None:
         if method.upper() == 'POST':
-            if check_proxy_alive(proxy):
+            check_proxy = check_proxy_alive(proxy)
+            if check_proxy:
+                tqdm.tqdm.write(
+                    f"\033[33m{content}\033[0m 使用代理为：\033[32m{check_proxy[1]}\033[0m，归属地为：\033[32m{check_proxy[2]['province'] + check_proxy[2]['city']}\033[0m")
                 response = requests.post(url=url, headers=headers, data=json.dumps(data),
-                                         proxies={'http': 'http://' + proxy, 'https': 'https://' + proxy},
+                                         proxies={'http': 'http://' + proxy},
                                          timeout=5)
             else:
+                response = requests.post(url=url, headers=headers, data=json.dumps(data))
                 tqdm.tqdm.write(f"\033[31m原代理已失效\033[0m")
                 tqdm.tqdm.write(f"\033[33m本次提交将不使用代理\033[0m")
-                response = requests.post(url=url, headers=headers, data=json.dumps(data))
                 proxy_data = get_proxy()
                 tqdm.tqdm.write(f"现用代理改为 \033[32m{proxy_data}\033[0m")
             logging.info(proxy)
@@ -189,7 +200,7 @@ def send_request(url, method, headers, data, proxy=None):
         elif method.upper() == 'GET':
             if check_proxy_alive(proxy):
                 response = requests.get(url, headers=headers, params=data,
-                                        proxies={'http': 'http://' + proxy, 'https': 'https://' + proxy},
+                                        proxies={'http': 'http://' + proxy},
                                         timeout=5)
             else:
                 tqdm.tqdm.write(f"\033[31m原代理已失效\033[0m")
@@ -231,7 +242,8 @@ def login_request(phone_type, phone_number, password, additional_text=None, data
     sign = calculate_sign(data, additional_text)
     headers = generate_headers(sign, phone_type, additional_text, str(round(time.time() * 1000)))
     url = 'http://sxbaapp.zcj.jyt.henan.gov.cn/api/relog.ashx'
-    response_text = send_request(url=url, method='POST', headers=headers, data=data, proxy=proxy_data)
+    content = "登录请求"
+    response_text = send_request(url=url, method='POST', headers=headers, data=data, proxy=proxy_data, content=content)
     logging.info(response_text)
     return response_text
 
@@ -255,7 +267,8 @@ def sign_in_request(uid, address, phonetype, probability, longitude, latitude, a
     sign = calculate_sign(data, additional_text)
     header = generate_headers(sign, phonetype, additional_text, str(round(time.time() * 1000)))
     url = 'http://sxbaapp.zcj.jyt.henan.gov.cn/api/clockindaily20220827.ashx'
-    response_text = send_request(url=url, method='POST', headers=header, data=data, proxy=proxy_data)
+    content = "签到请求"
+    response_text = send_request(url=url, method='POST', headers=header, data=data, proxy=proxy_data, content=content)
     logging.info(response_text)
     return response_text
 
@@ -320,7 +333,7 @@ def login_and_sign_in(user, endday):
                 if sign_in_result['code'] == 1001:
                     title = "职教家园打卡成功！"
                     content = f"打卡成功，提示信息：" + sign_in_result['msg']
-                    if config.day_report or config.week_report or config.month_report:
+                    if config['day_report'] or config['week_report'] or config['month_report']:
                         content = content + f"\n实习报告提交：{report_handler(user)}" + f"\n剩余时间：{endday}天"
                     push_feedback = MessagePush.pushMessage(addinfo=False, pushmode=user["pushmode"],
                                                             pushdata=user['pushdata'], title=title, content=content, )
@@ -372,7 +385,8 @@ def day_Report(time, user, uid, summary, record, project):
     }
     sign = calculate_sign(data, ADDITIONAL_TEXT)
     header = generate_headers(sign, user['deviceId'], ADDITIONAL_TEXT, str(round(time.time() * 1000)))
-    info = send_request(url=url, method='POST', headers=header, data=data, proxy=proxy_data)
+    content = "日报请求"
+    info = send_request(url=url, method='POST', headers=header, data=data, proxy=proxy_data, content=content)
     logging.info(info)
     return json.loads(info)
 
@@ -392,7 +406,8 @@ def week_Report(time, user, uid, summary, record, project):
     }
     sign = calculate_sign(data, ADDITIONAL_TEXT)
     header = generate_headers(sign, user['deviceId'], ADDITIONAL_TEXT, str(round(time.time() * 1000)))
-    info = send_request(url=url, method='POST', headers=header, data=data, proxy=proxy_data)
+    content = "周报请求"
+    info = send_request(url=url, method='POST', headers=header, data=data, proxy=proxy_data, content=content)
     logging.info(info)
     return info
 
@@ -412,7 +427,8 @@ def month_Report(time, user, uid, summary, record, project):
     }
     sign = calculate_sign(data, ADDITIONAL_TEXT)
     header = generate_headers(sign, user['deviceId'], ADDITIONAL_TEXT, str(round(time.time() * 1000)))
-    info = send_request(url=url, method='POST', headers=header, data=data, proxy=proxy_data)
+    content = "月报请求"
+    info = send_request(url=url, method='POST', headers=header, data=data, proxy=proxy_data, content=content)
     logging.info(info)
     return info
 
@@ -427,7 +443,7 @@ def load_report_data_from_json(file_path):
 
 
 def report_handler(user):
-    if config.day_report:
+    if config['day_report']:
         day_report_data = load_users_from_json("day_report.json")
         this_day_report_data = day_report_data[random.randint(0, (len(day_report_data) - 1))]
         this_day_result = day_Report(datetime.datetime.now(), user,
@@ -442,7 +458,7 @@ def report_handler(user):
             this_day_result_content = this_day_result
             logging.info(this_day_result_content)
         return this_day_result_content
-    if config.week_report:
+    if config['week_report']:
         if datetime.datetime.weekday(datetime.datetime.now()) == 6:
             week_report_data = load_users_from_json("week_report.json")
             this_week_report_data = week_report_data[random.randint(0, (len(week_report_data) - 1))]
@@ -458,7 +474,7 @@ def report_handler(user):
                 this_week_result_content = this_week_result
                 logging.info(this_week_result_content)
             return this_week_result_content
-    if config.month_report:
+    if config['month_report']:
         if datetime.datetime.now().strftime("%m") == "30":
             month_report_data = load_report_data_from_json("month_report.json")
             this_month_report_data = month_report_data[random.randint(0, (len(month_report_data) - 1))]
