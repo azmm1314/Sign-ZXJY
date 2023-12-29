@@ -1,9 +1,32 @@
-name: "Sign"
+name: Python 
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - master
   schedule:
-    - cron: "23 23 * * *" # 打卡时间
+    - cron: '0 12 * * *'
 
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: 3.8
+
+    - name: Update pip
       run: |
-        python Main.py
+        python -m pip install --upgrade pip
+
+    - name: Install dependencies
+      run: |
+        pip install -i https://mirrors.aliyun.com/pypi/simple -r requirements.txt
+
+    - name: Run your script
+      run: python Main.py
