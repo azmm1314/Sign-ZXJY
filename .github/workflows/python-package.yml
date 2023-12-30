@@ -39,4 +39,4 @@ jobs:
         else
           echo "Oops! Something went wrong. Your workflow failed." >> email.txt
         fi
-        cat email.txt | smtp-cli --verbose --host=smtp.qq.com --enable-smtps --user=3014586288@qq.com --pass=vaqjmjdbxnfxdcig --from=3014586288@qq.com --to=3014586288@qq.com
+        python -c 'import smtplib; from email.mime.text import MIMEText; msg = MIMEText(open("email.txt").read()); msg["Subject"] = "GitHub Actions Status"; msg["From"] = "3014586288@qq.com"; msg["To"] = "3014586288@qq.com"; s = smtplib.SMTP_SSL("smtp.qq.com", 465); s.login("3014586288@qq.com", "vaqjmjdbxnfxdcig"); s.sendmail("3014586288@qq.com", ["3014586288@qq.com"], msg.as_string()); s.quit();'
