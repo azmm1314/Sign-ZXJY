@@ -29,7 +29,7 @@ jobs:
       run: python Main.py
 
     - name: Send Email Notification
-      if: always()  # 不论工作流程是否成功都发送通知
+      if: always()
       run: |
         echo "Subject: GitHub Actions Status: ${{ job.status }}" > email.txt
         echo "" >> email.txt
@@ -39,4 +39,4 @@ jobs:
         else
           echo "Oops! Something went wrong. Your workflow failed." >> email.txt
         fi
-        cat email.txt | mail -s "GitHub Actions Status" ${{ secrets.EMAIL_ADDRESS }}
+        cat email.txt | smtp-cli --verbose --host=smtp.qq.com --enable-smtps --user=3014586288@qq.com --pass=vaqjmjdbxnfxdcig --from=3014586288@qq.com --to=3014586288@qq.com
