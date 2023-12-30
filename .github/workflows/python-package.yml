@@ -34,4 +34,9 @@ jobs:
         echo "Subject: GitHub Actions Status: ${{ job.status }}" > email.txt
         echo "" >> email.txt
         echo "GitHub Actions status: ${{ job.status }}" >> email.txt
+        if [ ${{ job.status }} == 'success' ]; then
+          echo "Congratulations! Your workflow was successful." >> email.txt
+        else
+          echo "Oops! Something went wrong. Your workflow failed." >> email.txt
+        fi
         cat email.txt | mail -s "GitHub Actions Status" ${{ secrets.EMAIL_ADDRESS }}
