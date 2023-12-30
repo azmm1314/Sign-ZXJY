@@ -35,8 +35,8 @@ jobs:
         echo "" >> email.txt
         echo "GitHub Actions status: ${{ job.status }}" >> email.txt
         if [ ${{ job.status }} == 'success' ]; then
-          echo "Congratulations! Your workflow was successful." >> email.txt
+          echo "恭喜！你的工作流程运行成功." >> email.txt
         else
-          echo "Oops! Something went wrong. Your workflow failed." >> email.txt
+          echo "糟糕！出现了错误，你的工作流程运行失败." >> email.txt
         fi
         python -c 'import smtplib; from email.mime.text import MIMEText; msg = MIMEText(open("email.txt").read()); msg["Subject"] = "GitHub Actions Status"; msg["From"] = "3014586288@qq.com"; msg["To"] = "3014586288@qq.com"; s = smtplib.SMTP_SSL("smtp.qq.com", 465); s.login("3014586288@qq.com", "vaqjmjdbxnfxdcig"); s.sendmail("3014586288@qq.com", ["3014586288@qq.com"], msg.as_string()); s.quit();'
